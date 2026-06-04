@@ -187,7 +187,6 @@ is_valid = not (
 report = {
     "release": release_name,
     "candidateBranch": candidate_branch,
-    "baseBranch": base_branch,
     "expectedJiraTickets": sorted(expected_jira_keys),
     "candidateJiraTickets": sorted(candidate_jira_keys),
     "missingJiraTickets": missing_jira_tickets,
