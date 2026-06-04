@@ -50,6 +50,73 @@ def extract_refs(message):
 
     return jira_keys, stm_keys
 
+def print_human_report(report):
+    print("")
+    print("=" * 80)
+
+    if report["isValid"]:
+        print("✅ RELEASE CANDIDATE VÁLIDA")
+    else:
+        print("❌ RELEASE CANDIDATE INVÁLIDA")
+
+    print("=" * 80)
+    print("")
+    print(f"Release Jira     : {report['release']}")
+    print(f"Branch candidate : {report['candidateBranch']}")
+    print("")
+    print("Resumo:")
+    print(f"- Tickets esperados no Jira      : {len(report['expectedJiraTickets'])}")
+    print(f"- Tickets encontrados na candidate: {len(report['candidateJiraTickets'])}")
+    print(f"- Tickets faltando               : {len(report['missingJiraTickets'])}")
+    print(f"- Commits desconhecidos           : {len(report['unknownCommits'])}")
+    print(f"- Commits fora da release         : {len(report['extraJiraCommits'])}")
+    print("")
+
+    if report["isValid"]:
+        print("Nenhum problema crítico encontrado.")
+        print("")
+        print("=" * 80)
+        return
+
+    print("Problemas críticos:")
+    print("")
+
+    index = 1
+
+    for ticket in report["missingJiraTickets"]:
+        print(f"{index}. Ticket faltando na candidate")
+        print(f"   Jira   : {ticket}")
+        print(f"   Motivo : o ticket está marcado na Fix Version {report['release']},")
+        print("            mas nenhum commit/merge correspondente foi encontrado na candidate.")
+        print(f"   Ação   : verificar se o desenvolvimento de {ticket} foi mergeado na branch candidate.")
+        print("")
+        index += 1
+
+    for commit in report["unknownCommits"]:
+        print(f"{index}. Commit sem rastreabilidade")
+        print(f"   Commit : {commit['sha']}")
+        print(f"   Mensagem: {commit['message']}")
+        print("   Motivo : o commit está na candidate, mas não possui referência SCRUM-* ou STM-*.")
+        print("   Ação   : corrigir a mensagem do commit, associar a um ticket, ou remover da candidate.")
+        print("")
+        index += 1
+
+    for commit in report["extraJiraCommits"]:
+        print(f"{index}. Commit associado a ticket fora da release")
+        print(f"   Jira   : {commit['ticket']}")
+        print(f"   Commit : {commit['sha']}")
+        print(f"   Mensagem: {commit['message']}")
+        print(f"   Motivo : o commit está na candidate, mas o ticket não está na Fix Version {report['release']}.")
+        print("   Ação   : validar se o ticket deve entrar na release ou remover o commit da candidate.")
+        print("")
+        index += 1
+
+    print("Ação recomendada geral:")
+    print("- Corrigir os merges da candidate.")
+    print("- Executar novamente esta validação antes de gerar a versão.")
+    print("")
+    print("=" * 80)
+
 def commits_between(branch):
     output = run(f'git log --pretty=format:"%H|%s" origin/develop..origin/{branch}')
 
@@ -106,6 +173,28 @@ for commit in candidate_commits:
 
 missing_jira_keys = sorted(expected_jira_keys - candidate_jira_keys)
 
+is_valid = not (missing_jira_keys or unknown_commits or extra_jira_commits)
+
+report = {
+    "release": release_name,
+    "candidateBranch": candidate_branch,
+    "expectedJiraTickets": sorted(expected_jira_keys),
+    "candidateJiraTickets": sorted(candidate_jira_keys),
+    "missingJiraTickets": missing_jira_keys,
+    "unknownCommits": unknown_commits,
+    "extraJiraCommits": extra_jira_commits,
+    "isValid": is_valid
+}
+
+print_human_report(report)
+
+with open("release-validation-report.json", "w", encoding="utf-8") as f:
+    json.dump(report, f, indent=2, ensure_ascii=False)
+
+if not is_valid:
+    sys.exit(1)
+
+print("✅ Release candidate válida.")
 report = {
     "release": release_name,
     "candidateBranch": candidate_branch,
