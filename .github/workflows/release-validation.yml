@@ -1,0 +1,87 @@
+name: Release Validation
+
+on:
+  push:
+    branches:
+      - candidate-*
+
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: "Release Jira (Ex: release-2026.10)"
+        required: true
+      candidate_branch:
+        description: "Branch candidate (Ex: candidate-2026.10)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Display Context
+        run: |
+          echo "Branch atual: ${{ github.ref_name }}"
+
+      - name: Determine Release
+        id: release
+
+        run: |
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+
+            echo "release_name=${{ github.event.inputs.release_name }}" >> $GITHUB_OUTPUT
+            echo "candidate_branch=${{ github.event.inputs.candidate_branch }}" >> $GITHUB_OUTPUT
+
+          else
+
+            BRANCH="${GITHUB_REF_NAME}"
+
+            VERSION=$(echo "$BRANCH" | sed 's/candidate-//')
+
+            echo "release_name=release-${VERSION}" >> $GITHUB_OUTPUT
+            echo "candidate_branch=${BRANCH}" >> $GITHUB_OUTPUT
+
+          fi
+
+      - name: Show Validation Parameters
+        run: |
+
+          echo "Release: ${{ steps.release.outputs.release_name }}"
+          echo "Candidate: ${{ steps.release.outputs.candidate_branch }}"
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run Validation
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
+
+          RELEASE_NAME: ${{ steps.release.outputs.release_name }}
+          CANDIDATE_BRANCH: ${{ steps.release.outputs.candidate_branch }}
+
+        run: |
+
+          python .github/scripts/validate_release.py
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        if: always()
+
+        with:
+          name: release-validation-report
+          path: release-validation-report.json
