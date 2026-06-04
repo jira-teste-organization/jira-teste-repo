@@ -17,8 +17,6 @@ jira_project_key = os.environ["JIRA_PROJECT_KEY"]
 
 release_name = os.environ["RELEASE_NAME"]
 candidate_branch = os.environ["CANDIDATE_BRANCH"]
-base_branch = os.environ.get("BASE_BRANCH", "develop")
-
 
 def run(cmd):
     return subprocess.check_output(cmd, shell=True, text=True).strip()
@@ -67,11 +65,10 @@ def extract_refs(message):
 
 
 def get_candidate_commits():
-    run(f"git fetch origin {base_branch} --prune")
     run(f"git fetch origin {candidate_branch} --prune")
 
     output = run(
-        f'git log --pretty=format:"%H|%s" origin/{base_branch}..origin/{candidate_branch}'
+        f'git log --pretty=format:"%H|%s" origin/{candidate_branch}'
     )
 
     commits = []
@@ -90,7 +87,6 @@ def get_candidate_commits():
             "jiraKeys": jira_keys,
             "stmKeys": stm_keys
         })
-
     return commits
 
 
