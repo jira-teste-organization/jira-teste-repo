@@ -9,10 +9,6 @@ on:
       candidate_branch:
         description: "Branch candidate. Ex: candidate-2026.10"
         required: true
-      base_branch:
-        description: "Branch base. Ex: develop"
-        required: true
-        default: "develop"
 
 permissions:
   contents: read
@@ -32,7 +28,6 @@ jobs:
         run: |
           echo "Release Jira     : ${{ github.event.inputs.release_name }}"
           echo "Candidate Branch : ${{ github.event.inputs.candidate_branch }}"
-          echo "Base Branch      : ${{ github.event.inputs.base_branch }}"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -48,7 +43,6 @@ jobs:
 
           RELEASE_NAME: ${{ github.event.inputs.release_name }}
           CANDIDATE_BRANCH: ${{ github.event.inputs.candidate_branch }}
-          BASE_BRANCH: ${{ github.event.inputs.base_branch }}
 
         run: |
           python .github/scripts/compare_candidate_with_jira.py
