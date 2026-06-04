@@ -7,7 +7,8 @@ import urllib.request
 import subprocess
 import sys
 
-ticket_regex = re.compile(r"STM-\d+", re.IGNORECASE)
+jira_key_regex = re.compile(r"SCRUM-\d+", re.IGNORECASE)
+stm_key_regex = re.compile(r"STM-\d+", re.IGNORECASE)
 
 jira_base_url = os.environ["JIRA_BASE_URL"].rstrip("/")
 jira_email = os.environ["JIRA_EMAIL"]
@@ -43,21 +44,30 @@ def jira_get_issues():
 
     return {issue["key"].upper(): issue for issue in data.get("issues", [])}
 
+def extract_refs(message):
+    jira_keys = sorted(set(x.upper() for x in jira_key_regex.findall(message)))
+    stm_keys = sorted(set(x.upper() for x in stm_key_regex.findall(message)))
+
+    return jira_keys, stm_keys
+
 def commits_between(branch):
     output = run(f'git log --pretty=format:"%H|%s" origin/develop..origin/{branch}')
 
     commits = []
+
     for line in output.splitlines():
         if "|" not in line:
             continue
 
         sha, message = line.split("|", 1)
-        tickets = sorted(set(t.upper() for t in ticket_regex.findall(message)))
+
+        jira_keys, stm_keys = extract_refs(message)
 
         commits.append({
             "sha": sha[:7],
             "message": message,
-            "tickets": tickets
+            "jiraKeys": jira_keys,
+            "stmKeys": stm_keys
         })
 
     return commits
@@ -66,39 +76,44 @@ run("git fetch origin develop --prune")
 run(f"git fetch origin {candidate_branch} --prune")
 
 jira_issues = jira_get_issues()
-expected_tickets = set(jira_issues.keys())
+expected_jira_keys = set(jira_issues.keys())
 
 candidate_commits = commits_between(candidate_branch)
 
-candidate_tickets = set()
+candidate_jira_keys = set()
 unknown_commits = []
-extra_ticket_commits = []
+extra_jira_commits = []
 
 for commit in candidate_commits:
-    if not commit["tickets"]:
+    message = commit["message"]
+
+    if message.startswith("Merge pull request") and "/develop" in message:
+        continue
+
+    if not commit["jiraKeys"] and not commit["stmKeys"]:
         unknown_commits.append(commit)
         continue
 
-    for ticket in commit["tickets"]:
-        candidate_tickets.add(ticket)
+    for jira_key in commit["jiraKeys"]:
+        candidate_jira_keys.add(jira_key)
 
-        if ticket not in expected_tickets:
-            extra_ticket_commits.append({
-                "ticket": ticket,
+        if jira_key not in expected_jira_keys:
+            extra_jira_commits.append({
+                "ticket": jira_key,
                 "sha": commit["sha"],
                 "message": commit["message"]
             })
 
-missing_tickets = sorted(expected_tickets - candidate_tickets)
+missing_jira_keys = sorted(expected_jira_keys - candidate_jira_keys)
 
 report = {
     "release": release_name,
     "candidateBranch": candidate_branch,
-    "expectedTickets": sorted(expected_tickets),
-    "candidateTickets": sorted(candidate_tickets),
-    "missingTickets": missing_tickets,
+    "expectedJiraTickets": sorted(expected_jira_keys),
+    "candidateJiraTickets": sorted(candidate_jira_keys),
+    "missingJiraTickets": missing_jira_keys,
     "unknownCommits": unknown_commits,
-    "extraTicketCommits": extra_ticket_commits
+    "extraJiraCommits": extra_jira_commits
 }
 
 print(json.dumps(report, indent=2, ensure_ascii=False))
@@ -106,7 +121,7 @@ print(json.dumps(report, indent=2, ensure_ascii=False))
 with open("release-validation-report.json", "w", encoding="utf-8") as f:
     json.dump(report, f, indent=2, ensure_ascii=False)
 
-if missing_tickets or unknown_commits or extra_ticket_commits:
+if missing_jira_keys or unknown_commits or extra_jira_commits:
     print("❌ Release candidate inválida.")
     sys.exit(1)
 
