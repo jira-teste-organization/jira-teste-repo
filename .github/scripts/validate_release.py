@@ -47,8 +47,32 @@ def jira_get_issues():
 def extract_refs(message):
     jira_keys = sorted(set(x.upper() for x in jira_key_regex.findall(message)))
     stm_keys = sorted(set(x.upper() for x in stm_key_regex.findall(message)))
-
     return jira_keys, stm_keys
+
+def get_candidate_commits():
+    run(f"git fetch origin {candidate_branch} --prune")
+
+    output = run(
+        f'git log --pretty=format:"%H|%s" origin/{candidate_branch}'
+    )
+
+    commits = []
+
+    for line in output.splitlines():
+        if "|" not in line:
+            continue
+
+        sha, message = line.split("|", 1)
+        jira_keys, stm_keys = extract_refs(message)
+
+        commits.append({
+            "sha": sha[:7],
+            "message": message,
+            "jiraKeys": jira_keys,
+            "stmKeys": stm_keys
+        })
+
+    return commits
 
 def print_human_report(report):
     print("")
@@ -65,11 +89,11 @@ def print_human_report(report):
     print(f"Branch candidate : {report['candidateBranch']}")
     print("")
     print("Resumo:")
-    print(f"- Tickets esperados no Jira      : {len(report['expectedJiraTickets'])}")
+    print(f"- Tickets esperados no Jira       : {len(report['expectedJiraTickets'])}")
     print(f"- Tickets encontrados na candidate: {len(report['candidateJiraTickets'])}")
-    print(f"- Tickets faltando               : {len(report['missingJiraTickets'])}")
-    print(f"- Commits desconhecidos           : {len(report['unknownCommits'])}")
-    print(f"- Commits fora da release         : {len(report['extraJiraCommits'])}")
+    print(f"- Tickets faltando                : {len(report['missingJiraTickets'])}")
+    print(f"- Commits desconhecidos            : {len(report['unknownCommits'])}")
+    print(f"- Commits fora da release          : {len(report['extraJiraCommits'])}")
     print("")
 
     if report["isValid"]:
@@ -117,35 +141,10 @@ def print_human_report(report):
     print("")
     print("=" * 80)
 
-def commits_between(branch):
-    output = run(f'git log --pretty=format:"%H|%s" origin/develop..origin/{branch}')
-
-    commits = []
-
-    for line in output.splitlines():
-        if "|" not in line:
-            continue
-
-        sha, message = line.split("|", 1)
-
-        jira_keys, stm_keys = extract_refs(message)
-
-        commits.append({
-            "sha": sha[:7],
-            "message": message,
-            "jiraKeys": jira_keys,
-            "stmKeys": stm_keys
-        })
-
-    return commits
-
-run("git fetch origin develop --prune")
-run(f"git fetch origin {candidate_branch} --prune")
-
 jira_issues = jira_get_issues()
 expected_jira_keys = set(jira_issues.keys())
 
-candidate_commits = commits_between(candidate_branch)
+candidate_commits = get_candidate_commits()
 
 candidate_jira_keys = set()
 unknown_commits = []
@@ -153,9 +152,6 @@ extra_jira_commits = []
 
 for commit in candidate_commits:
     message = commit["message"]
-
-    if message.startswith("Merge pull request") and "/develop" in message:
-        continue
 
     if not commit["jiraKeys"] and not commit["stmKeys"]:
         unknown_commits.append(commit)
@@ -192,26 +188,6 @@ with open("release-validation-report.json", "w", encoding="utf-8") as f:
     json.dump(report, f, indent=2, ensure_ascii=False)
 
 if not is_valid:
-    sys.exit(1)
-
-print("✅ Release candidate válida.")
-report = {
-    "release": release_name,
-    "candidateBranch": candidate_branch,
-    "expectedJiraTickets": sorted(expected_jira_keys),
-    "candidateJiraTickets": sorted(candidate_jira_keys),
-    "missingJiraTickets": missing_jira_keys,
-    "unknownCommits": unknown_commits,
-    "extraJiraCommits": extra_jira_commits
-}
-
-print(json.dumps(report, indent=2, ensure_ascii=False))
-
-with open("release-validation-report.json", "w", encoding="utf-8") as f:
-    json.dump(report, f, indent=2, ensure_ascii=False)
-
-if missing_jira_keys or unknown_commits or extra_jira_commits:
-    print("❌ Release candidate inválida.")
     sys.exit(1)
 
 print("✅ Release candidate válida.")
