@@ -119,11 +119,20 @@ def call_github_models(prompt):
 
 
 def build_fallback_analysis(report, error):
-    return f"""# AI Release Analysis
 
-Não foi possível gerar a análise com IA usando GitHub Models.
+    report_json = safe_json_dumps(report)
 
-## Motivo técnico
-
-"""
-{error}
+    return (
+        "# AI Release Analysis\n\n"
+        "Não foi possível gerar a análise com IA usando GitHub Models.\n\n"
+        "## Motivo técnico\n\n"
+        f"{error}\n\n"
+        "## Relatório bruto da validação\n\n"
+        f"{report_json}\n\n"
+        "## Interpretação mínima\n\n"
+        "Verifique:\n"
+        "- missingJiraTickets\n"
+        "- unknownCommits\n"
+        "- extraJiraCommits\n"
+        "- isValid\n"
+    )
