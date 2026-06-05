@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  models: read
 
 jobs:
   validate:
@@ -87,3 +88,18 @@ jobs:
         with:
           name: release-validation-report
           path: release-validation-report.json
+
+      - name: Generate AI Release Analysis
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python .github/scripts/ai_release_analysis.py
+
+      - name: Upload AI Analysis
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ai-release-analysis
+          path: ai-release-analysis.md
+          
