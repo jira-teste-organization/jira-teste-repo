@@ -2,16 +2,28 @@ import json
 import os
 import urllib.request
 import urllib.error
+import traceback
 
 REPORT_FILE = "release-validation-report.json"
 OUTPUT_FILE = "ai-release-analysis.md"
 
-GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+MODEL_ENDPOINT = "https://models.github.ai/inference/chat/completions"
+MODEL_NAME = "openai/gpt-4o-mini"
 
-with open(REPORT_FILE, "r", encoding="utf-8") as f:
-    report = json.load(f)
 
-prompt = f"""
+def load_report():
+    if not os.path.exists(REPORT_FILE):
+        return {
+            "error": f"Arquivo {REPORT_FILE} não encontrado.",
+            "isValid": False
+        }
+
+    with open(REPORT_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def build_prompt(report):
+    return f"""
 Você é um Release Governance Agent.
 
 Analise o relatório abaixo e gere um parecer objetivo em português para o time de desenvolvimento.
@@ -24,56 +36,59 @@ Regras:
 - Informe o risco.
 - Sugira próximas ações.
 - Não invente tickets, commits ou dados não presentes no JSON.
+- Se o JSON indicar erro técnico, explique que a análise de IA usou o relatório bruto disponível.
 
 Relatório JSON:
 
 {json.dumps(report, indent=2, ensure_ascii=False)}
 """
 
-payload = {
-    "model": "openai/gpt-4o-mini",
-    "messages": [
-        {
-            "role": "system",
-            "content": "Você é um agente especialista em governança de releases, GitHub, Jira e controle de versões."
+
+def call_github_models(prompt):
+    github_token = os.environ.get("GITHUB_TOKEN")
+
+    if not github_token:
+        raise RuntimeError("Variável GITHUB_TOKEN não encontrada.")
+
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [
+            {
+                "role": "system",
+                "content": "Você é um agente especialista em governança de releases, GitHub, Jira e controle de versões."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "temperature": 0.2,
+        "max_tokens": 1200
+    }
+
+    request = urllib.request.Request(
+        MODEL_ENDPOINT,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {github_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         },
-        {
-            "role": "user",
-            "content": prompt
-        }
-    ],
-    "temperature": 0.2,
-    "max_tokens": 1200
-}
+        method="POST"
+    )
 
-request = urllib.request.Request(
-    "https://models.github.ai/inference/chat/completions",
-    data=json.dumps(payload).encode("utf-8"),
-    headers={
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    },
-    method="POST"
-)
-
-try:
-    with urllib.request.urlopen(request) as response:
+    with urllib.request.urlopen(request, timeout=60) as response:
         data = json.loads(response.read().decode("utf-8"))
 
-    content = data["choices"][0]["message"]["content"]
+    return data["choices"][0]["message"]["content"]
 
-except urllib.error.HTTPError as e:
-    error_body = e.read().decode("utf-8")
 
-    content = f"""
-# AI Release Analysis
+def build_fallback_analysis(report, error):
+    return f"""# AI Release Analysis
 
-Não foi possível gerar a análise com IA.
+Não foi possível gerar a análise com IA usando GitHub Models.
 
-Erro HTTP: {e.code}
-
-Detalhes:
+## Motivo técnico
 
 ```text
-{error_body}
+{error}
