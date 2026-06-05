@@ -3,7 +3,7 @@ import os
 import urllib.request
 import urllib.error
 
-REPORT_FILE = "candidate-jira-comparison-report.json"
+REPORT_FILE = "release-validation-report.json"
 OUTPUT_FILE = "ai-release-analysis.md"
 
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
