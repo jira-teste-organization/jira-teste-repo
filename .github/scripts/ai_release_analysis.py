@@ -125,5 +125,5 @@ Não foi possível gerar a análise com IA usando GitHub Models.
 
 ## Motivo técnico
 
-```text
+"""
 {error}
